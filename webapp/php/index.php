@@ -98,11 +98,20 @@ $container->set('helper', function ($c) {
         }
 
         public function fetch_first($query, ...$params) {
+
+            $time_start = microtime(true);
+
             $db = $this->db();
             $ps = $db->prepare($query);
             $ps->execute($params);
             $result = $ps->fetch();
             $ps->closeCursor();
+
+            $time = microtime(true) - $time_start;
+            if ($time > 0.1) {
+                error_log(sprintf("slow query: %.3f, %s", $time*1000, $query));
+            }
+
             return $result;
         }
 
@@ -225,17 +234,30 @@ $app->get('/login', function (Request $request, Response $response) {
 });
 
 $app->post('/login', function (Request $request, Response $response) {
+    error_log('login');
+    $time_start = microtime(true);
     if ($this->get('helper')->get_session_user() !== null) {
         return redirect($response, '/', 302);
     }
+    $get_session_user_time = microtime(true) - $time_start;
+    $time_start = microtime(true);
 
     $db = $this->get('db');
+    $get_ = microtime(true) - $time_start;
+    $time_start = microtime(true);
+
     $params = $request->getParsedBody();
+    $get_params = microtime(true) - $time_start;
+    $time_start = microtime(true);
+    
     $user = $this->get('helper')->try_login($params['account_name'], $params['password']);
+    $after_try_login = microtime(true) - $time_start;
+
+    error_log(sprintf("login time: %.3f, %.3f, %.3f, %.3f", $get_session_user_time*1000, $get_*1000, $get_params*1000, $after_try_login*1000));
 
     if ($user) {
         $_SESSION['user'] = [
-          'id' => $user['id'],
+            'id' => $user['id'],
         ];
         return redirect($response, '/', 302);
     } else {
