@@ -138,7 +138,6 @@ $container->set('helper', function ($c) {
             $options += ['all_comments' => false];
             $all_comments = $options['all_comments'];
 
-            // var_dump($results);
             $posts = [];
             $in_query = '';
             foreach($results as $post) {
@@ -149,9 +148,34 @@ $container->set('helper', function ($c) {
             $comments_count = $this->db()->prepare("SELECT post_id, COUNT(*) AS `count` FROM `comments` WHERE post_id in ($in_query) GROUP BY post_id");
             $comments_count->execute();
             $comments_count = $comments_count->fetchAll(PDO::FETCH_ASSOC);
-            var_dump($comments_count);
+
+            
+            // var_dump($comments_count);
+
             foreach ($results as $post) {
-                $post['comment_count'] = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
+                $post['comment_count'] = 0;
+                // echo "{";
+                // $post['comment_count'] = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
+                // var_dump($post['comment_count']);
+                // echo "post_id: ".$post['id'];
+                foreach ($comments_count as $comment) {
+                    // echo "comment['post_id']:";
+                    // var_dump($comment['post_id']);
+                    // var_dump($post['id']);
+                    if ($comment['post_id'] === $post['id']) {
+                        $post['comment_count'] = $comment['count'];
+                        // echo "post_id: ".$post['id'];
+                        // echo "comment_count: ".$comment['count'];
+                        break;
+                    } else {
+                        // echo "skip<br>";
+                    }
+
+                }
+                // var_dump($post['comment_count']);
+                // echo "},";
+                
+                // var_dump($post['comment_count']);
                 $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
                 if (!$all_comments) {
                     $query .= ' LIMIT 3';
