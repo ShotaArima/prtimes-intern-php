@@ -149,7 +149,7 @@ $container->set('helper', function ($c) {
             $comments_count->execute();
             $comments_count = $comments_count->fetchAll(PDO::FETCH_ASSOC);
 
-            $post_users = $this->db()->prepare("SELECT * FROM `users`");
+            $post_users = $this->db()->prepare("SELECT * FROM `users`"); # 改善ポイント
             $post_users->execute();
             $post_users = $post_users->fetchAll(PDO::FETCH_ASSOC);
 
@@ -182,18 +182,19 @@ $container->set('helper', function ($c) {
                     if (isset($user_map[$user_id])) {
                         $comment['user'] = $user_map[$user_id];
                         // echo "ok (user: {$comment['user']['account_name']})<br>";
-                    } else {
-                        $expected_user = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
-                        if ($expected_user) {
-                            $comment['user'] = $expected_user;
-                            // echo "ok (user: {$expected_user['account_name']})<br>";
-                            // データベースから取得したユーザー情報を$user_mapに追加
-                            $user_map[$user_id] = $expected_user;
-                        } else {
-                            $comment['user'] = null;
-                            // echo "!!!!!!!NG!!!!!!! (user not found)<br>";
-                        }
                     }
+                    //  else {
+                    //     $expected_user = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
+                    //     if ($expected_user) {
+                    //         $comment['user'] = $expected_user;
+                    //         // echo "ok (user: {$expected_user['account_name']})<br>";
+                    //         // データベースから取得したユーザー情報を$user_mapに追加
+                    //         $user_map[$user_id] = $expected_user;
+                    //     } else {
+                    //         $comment['user'] = null;
+                    //         // echo "!!!!!!!NG!!!!!!! (user not found)<br>";
+                    //     }
+                    // }
                 }
                 // // いじらない
                 // foreach ($comments as &$comment) {
@@ -209,11 +210,11 @@ $container->set('helper', function ($c) {
                 unset($comment);
                 $post['comments'] = array_reverse($comments);
 
-                $post['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $post['user_id']);
-                if ($post['user']['del_flg'] == 0) {
+                $post['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $post['user_id']); # 改善ポイント
+                if ($post['user']['del_flg'] == 0) { # SQLでやりたい
                     $posts[] = $post;
                 }
-                if (count($posts) >= POSTS_PER_PAGE) {
+                if (count($posts) >= POSTS_PER_PAGE) { # ポストの取得する数を制限、SQLでこれをやりたい
                     break;
                 }
             }
