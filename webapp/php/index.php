@@ -149,33 +149,26 @@ $container->set('helper', function ($c) {
             $comments_count->execute();
             $comments_count = $comments_count->fetchAll(PDO::FETCH_ASSOC);
 
-            
-            // var_dump($comments_count);
+            $post_users = $this->db()->prepare("SELECT * FROM `users`");
+            $post_users->execute();
+            $post_users = $post_users->fetchAll(PDO::FETCH_ASSOC);
+
+            // ユーザーIDをキーとする連想配列に変換
+            $user_map = array();
+            foreach ($post_users as $user) {
+                $user_map[$user['id']] = $user;
+            }
+            // var_dump(array_keys($post_users));
 
             foreach ($results as $post) {
                 $post['comment_count'] = 0;
-                // echo "{";
-                // $post['comment_count'] = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
-                // var_dump($post['comment_count']);
-                // echo "post_id: ".$post['id'];
-                foreach ($comments_count as $comment) {
-                    // echo "comment['post_id']:";
-                    // var_dump($comment['post_id']);
-                    // var_dump($post['id']);
+                foreach ($comments_count as $comment) {;
                     if ($comment['post_id'] === $post['id']) {
                         $post['comment_count'] = $comment['count'];
-                        // echo "post_id: ".$post['id'];
-                        // echo "comment_count: ".$comment['count'];
                         break;
                     } else {
-                        // echo "skip<br>";
                     }
-
-                }
-                // var_dump($post['comment_count']);
-                // echo "},";
-                
-                // var_dump($post['comment_count']);
+                }                
                 $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
                 if (!$all_comments) {
                     $query .= ' LIMIT 3';
@@ -185,8 +178,34 @@ $container->set('helper', function ($c) {
                 $ps->execute([$post['id']]);
                 $comments = $ps->fetchAll(PDO::FETCH_ASSOC);
                 foreach ($comments as &$comment) {
-                    $comment['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
+                    $user_id = $comment['user_id'];
+                    if (isset($user_map[$user_id])) {
+                        $comment['user'] = $user_map[$user_id];
+                        // echo "ok (user: {$comment['user']['account_name']})<br>";
+                    } else {
+                        $expected_user = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
+                        if ($expected_user) {
+                            $comment['user'] = $expected_user;
+                            // echo "ok (user: {$expected_user['account_name']})<br>";
+                            // データベースから取得したユーザー情報を$user_mapに追加
+                            $user_map[$user_id] = $expected_user;
+                        } else {
+                            $comment['user'] = null;
+                            // echo "!!!!!!!NG!!!!!!! (user not found)<br>";
+                        }
+                    }
                 }
+                // // いじらない
+                // foreach ($comments as &$comment) {
+                //     $expected_user = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
+                //     if ($comment['user']['account_name'] === $expected_user['account_name']) {
+                //         echo "ok (user: {$expected_user['account_name']}<br>";
+                //     } else {
+                //         echo "!!!!!!!NG!!!!!!! (expected account name: {$expected_user['account_name']}, found account name: {$comment['user']['account_name']})<br>";
+                //     }
+                // }
+                // // いじらないend
+
                 unset($comment);
                 $post['comments'] = array_reverse($comments);
 
