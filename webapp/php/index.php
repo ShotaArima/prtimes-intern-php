@@ -144,12 +144,21 @@ $container->set('helper', function ($c) {
                 $in_query .= (string)$post['id'] .',';
             } 
             $in_query = rtrim($in_query, ',');
-            // var_dump($in_query);
+
+            // カウントの取得
             $comments_count = $this->db()->prepare("SELECT post_id, COUNT(*) AS `count` FROM `comments` WHERE post_id in ($in_query) GROUP BY post_id");
             $comments_count->execute();
             $comments_count = $comments_count->fetchAll(PDO::FETCH_ASSOC);
 
-            $post_users = $this->db()->prepare("SELECT * FROM `users`"); # 改善ポイント
+            // // 記事のidから降順に取得
+            $query = "SELECT * FROM `comments` WHERE post_id IN ($in_query) ORDER BY `created_at` DESC";
+
+            $comments = $this->db()->prepare($query);
+            $comments ->execute();
+            $comments = $comments->fetchAll(PDO::FETCH_ASSOC);
+
+            // 記事の投稿者を取得
+            $post_users = $this->db()->prepare("SELECT * FROM `users`" ); # 改善ポイント
             $post_users->execute();
             $post_users = $post_users->fetchAll(PDO::FETCH_ASSOC);
 
@@ -159,58 +168,35 @@ $container->set('helper', function ($c) {
                 $user_map[$user['id']] = $user;
             }
             // var_dump(array_keys($post_users));
-
             foreach ($results as $post) {
                 $post['comment_count'] = 0;
                 foreach ($comments_count as $comment) {;
                     if ($comment['post_id'] === $post['id']) {
                         $post['comment_count'] = $comment['count'];
                         break;
-                    } else {
                     }
-                }                
-                $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
-                if (!$all_comments) {
-                    $query .= ' LIMIT 3';
                 }
+                
+                $post_comments = array_filter($comments, function($comment) use ($post) {
+                    // var_dump($comment);
+                    return $comment['post_id'] === $post['id'];
+                });
 
-                $ps = $this->db()->prepare($query);
-                $ps->execute([$post['id']]);
-                $comments = $ps->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($comments as &$comment) {
+                foreach ($post_comments as &$comment) {
                     $user_id = $comment['user_id'];
                     if (isset($user_map[$user_id])) {
                         $comment['user'] = $user_map[$user_id];
-                        // echo "ok (user: {$comment['user']['account_name']})<br>";
                     }
-                    //  else {
-                    //     $expected_user = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
-                    //     if ($expected_user) {
-                    //         $comment['user'] = $expected_user;
-                    //         // echo "ok (user: {$expected_user['account_name']})<br>";
-                    //         // データベースから取得したユーザー情報を$user_mapに追加
-                    //         $user_map[$user_id] = $expected_user;
-                    //     } else {
-                    //         $comment['user'] = null;
-                    //         // echo "!!!!!!!NG!!!!!!! (user not found)<br>";
-                    //     }
-                    // }
                 }
-                // // いじらない
-                // foreach ($comments as &$comment) {
-                //     $expected_user = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
-                //     if ($comment['user']['account_name'] === $expected_user['account_name']) {
-                //         echo "ok (user: {$expected_user['account_name']}<br>";
-                //     } else {
-                //         echo "!!!!!!!NG!!!!!!! (expected account name: {$expected_user['account_name']}, found account name: {$comment['user']['account_name']})<br>";
-                //     }
-                // }
-                // // いじらないend
+
+                // $post_commentsの上位三件取得
+                $post_comments = array_slice($post_comments, 0, 3);
 
                 unset($comment);
-                $post['comments'] = array_reverse($comments);
+                $post['comments'] = array_reverse($post_comments);
 
                 $post['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $post['user_id']); # 改善ポイント
+                // var_dump($post['user']);
                 if ($post['user']['del_flg'] == 0) { # SQLでやりたい
                     $posts[] = $post;
                 }
@@ -228,6 +214,11 @@ AppFactory::setContainer($container);
 $app = AppFactory::create();
 
 // ------- helper method for view
+
+function print_json ($name, $data) {
+    echo $name.':' . nl2br(str_replace(' ', '&nbsp;', json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)));
+}
+
 
 function escape_html($h) {
     return htmlspecialchars($h, ENT_QUOTES | ENT_HTML5, 'UTF-8');
