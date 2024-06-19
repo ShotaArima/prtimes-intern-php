@@ -17,4 +17,5 @@ WORKDIR /var/www/html
 
 RUN composer install --no-dev
 
+# COPY ./php-fpm.conf /usr/local/etc/php-fpm.d/www.conf
 COPY . /var/www/html

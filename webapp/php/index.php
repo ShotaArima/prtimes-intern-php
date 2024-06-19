@@ -98,11 +98,20 @@ $container->set('helper', function ($c) {
         }
 
         public function fetch_first($query, ...$params) {
+
+            $time_start = microtime(true);
+
             $db = $this->db();
             $ps = $db->prepare($query);
             $ps->execute($params);
             $result = $ps->fetch();
             $ps->closeCursor();
+
+            $time = microtime(true) - $time_start;
+            if ($time > 0.1) {
+                error_log(sprintf("slow query: %.3f, %s", $time*1000, $query));
+            }
+
             return $result;
         }
 
@@ -130,27 +139,68 @@ $container->set('helper', function ($c) {
             $all_comments = $options['all_comments'];
 
             $posts = [];
+            $in_query = '';
+            foreach($results as $post) {
+                $in_query .= (string)$post['id'] .',';
+            } 
+            $in_query = rtrim($in_query, ',');
+
+            // カウントの取得
+            $comments_count = $this->db()->prepare("SELECT post_id, COUNT(*) AS `count` FROM `comments` WHERE post_id in ($in_query) GROUP BY post_id");
+            $comments_count->execute();
+            $comments_count = $comments_count->fetchAll(PDO::FETCH_ASSOC);
+
+            // // 記事のidから降順に取得
+            $query = "SELECT * FROM `comments` WHERE post_id IN ($in_query) ORDER BY `created_at` DESC";
+
+            $comments = $this->db()->prepare($query);
+            $comments ->execute();
+            $comments = $comments->fetchAll(PDO::FETCH_ASSOC);
+
+            // 記事の投稿者を取得
+            $post_users = $this->db()->prepare("SELECT * FROM `users`" ); # 改善ポイント
+            $post_users->execute();
+            $post_users = $post_users->fetchAll(PDO::FETCH_ASSOC);
+
+            // ユーザーIDをキーとする連想配列に変換
+            $user_map = array();
+            foreach ($post_users as $user) {
+                $user_map[$user['id']] = $user;
+            }
+            // var_dump(array_keys($post_users));
             foreach ($results as $post) {
-                $post['comment_count'] = $this->fetch_first('SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?', $post['id'])['count'];
-                $query = 'SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC';
-                if (!$all_comments) {
-                    $query .= ' LIMIT 3';
+                $post['comment_count'] = 0;
+                foreach ($comments_count as $comment) {;
+                    if ($comment['post_id'] === $post['id']) {
+                        $post['comment_count'] = $comment['count'];
+                        break;
+                    }
+                }
+                
+                $post_comments = array_filter($comments, function($comment) use ($post) {
+                    // var_dump($comment);
+                    return $comment['post_id'] === $post['id'];
+                });
+
+                foreach ($post_comments as &$comment) {
+                    $user_id = $comment['user_id'];
+                    if (isset($user_map[$user_id])) {
+                        $comment['user'] = $user_map[$user_id];
+                    }
                 }
 
-                $ps = $this->db()->prepare($query);
-                $ps->execute([$post['id']]);
-                $comments = $ps->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($comments as &$comment) {
-                    $comment['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $comment['user_id']);
-                }
+                // $post_commentsの上位三件取得
+                $post_comments = array_slice($post_comments, 0, 3);
+
                 unset($comment);
-                $post['comments'] = array_reverse($comments);
+                $post['comments'] = array_reverse($post_comments);
 
-                $post['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $post['user_id']);
-                if ($post['user']['del_flg'] == 0) {
+                $post['user'] = $this->fetch_first('SELECT * FROM `users` WHERE `id` = ?', $post['user_id']); # 改善ポイント
+                // var_dump($post['user']);
+                if ($post['user']['del_flg'] == 0) { # SQLでやりたい
                     $posts[] = $post;
                 }
-                if (count($posts) >= POSTS_PER_PAGE) {
+                if (count($posts) >= POSTS_PER_PAGE) { # ポストの取得する数を制限、SQLでこれをやりたい
                     break;
                 }
             }
@@ -164,6 +214,11 @@ AppFactory::setContainer($container);
 $app = AppFactory::create();
 
 // ------- helper method for view
+
+function print_json ($name, $data) {
+    echo $name.':' . nl2br(str_replace(' ', '&nbsp;', json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)));
+}
+
 
 function escape_html($h) {
     return htmlspecialchars($h, ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -225,17 +280,30 @@ $app->get('/login', function (Request $request, Response $response) {
 });
 
 $app->post('/login', function (Request $request, Response $response) {
+    error_log('login');
+    $time_start = microtime(true);
     if ($this->get('helper')->get_session_user() !== null) {
         return redirect($response, '/', 302);
     }
+    $get_session_user_time = microtime(true) - $time_start;
+    $time_start = microtime(true);
 
     $db = $this->get('db');
+    $get_ = microtime(true) - $time_start;
+    $time_start = microtime(true);
+
     $params = $request->getParsedBody();
+    $get_params = microtime(true) - $time_start;
+    $time_start = microtime(true);
+    
     $user = $this->get('helper')->try_login($params['account_name'], $params['password']);
+    $after_try_login = microtime(true) - $time_start;
+
+    error_log(sprintf("login time: %.3f, %.3f, %.3f, %.3f", $get_session_user_time*1000, $get_*1000, $get_params*1000, $after_try_login*1000));
 
     if ($user) {
         $_SESSION['user'] = [
-          'id' => $user['id'],
+            'id' => $user['id'],
         ];
         return redirect($response, '/', 302);
     } else {
